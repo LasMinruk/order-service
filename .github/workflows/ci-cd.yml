@@ -48,12 +48,32 @@ jobs:
         run: docker build -t ${{ env.SERVICE_NAME }}:${{ github.sha }} .
 
   # ─────────────────────────────────────────────────────────
+  # Security: SonarCloud Security Scan
+  # ─────────────────────────────────────────────────────────
+  security-scan:
+    name: SonarCloud Security Scan
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────
   # CD: Build and Push Docker Image
   # ─────────────────────────────────────────────────────────
   cd:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: ci
+    needs: security-scan
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: read
