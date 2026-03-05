@@ -36,19 +36,15 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        working-directory: ./order-service
         run: npm ci
 
       - name: Run linter
-        working-directory: ./order-service
         run: npm run lint || echo "No lint script configured"
 
       - name: Run tests
-        working-directory: ./order-service
         run: npm test || echo "No tests configured"
 
       - name: Build Docker image
-        working-directory: ./order-service
         run: docker build -t ${{ env.SERVICE_NAME }}:${{ github.sha }} .
 
   # ─────────────────────────────────────────────────────────
@@ -91,7 +87,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./order-service
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
