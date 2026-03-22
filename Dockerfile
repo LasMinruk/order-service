@@ -12,6 +12,8 @@ RUN npm install --omit=dev
 
 COPY . .
 
+ENV MONGO_URI=""
+
 EXPOSE 3003
 
 USER node

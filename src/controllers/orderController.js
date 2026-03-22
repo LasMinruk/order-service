@@ -1,105 +1,55 @@
-const { v4: uuidv4 } = require('uuid');
-const orders = require('../data/orders');
-
-// Import service clients (these make HTTP calls to other services)
+const Order = require('../models/Order');
 const { getUserById } = require('../services/userServiceClient');
 const { getProductById, reduceStock } = require('../services/productServiceClient');
 const { sendOrderNotification } = require('../services/notificationServiceClient');
 
-// GET /orders - Get all orders
-const getAllOrders = (req, res) => {
-  res.status(200).json({
-    success: true,
-    count: orders.length,
-    data: orders
-  });
-};
-
-// GET /orders/:id - Get single order
-const getOrderById = (req, res) => {
-  const order = orders.find(o => o.id === req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: `Order with ID ${req.params.id} not found`
-    });
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    res.status(200).json({ success: true, count: orders.length, data: orders });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-
-  res.status(200).json({
-    success: true,
-    data: order
-  });
 };
 
-// POST /orders - Create a new order
-// THIS IS THE KEY FUNCTION - it calls 3 other microservices!
+const getOrderById = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: `Order with ID ${req.params.id} not found` });
+    res.status(200).json({ success: true, data: order });
+  } catch (error) {
+    if (error.name === 'CastError') return res.status(404).json({ success: false, message: `Order with ID ${req.params.id} not found` });
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const createOrder = async (req, res) => {
   const { userId, productId, quantity } = req.body;
 
-  // Step 1: Basic validation
-  if (!userId || !productId || !quantity) {
-    return res.status(400).json({
-      success: false,
-      message: 'Please provide userId, productId, and quantity'
-    });
-  }
-
-  if (isNaN(quantity) || quantity <= 0) {
-    return res.status(400).json({
-      success: false,
-      message: 'Quantity must be a positive number'
-    });
-  }
+  if (!userId || !productId || !quantity)
+    return res.status(400).json({ success: false, message: 'Please provide userId, productId, and quantity' });
+  if (isNaN(quantity) || quantity <= 0)
+    return res.status(400).json({ success: false, message: 'Quantity must be a positive number' });
 
   try {
-    // ─────────────────────────────────────────────────
-    // Step 2: Call USER SERVICE to verify user exists
-    // ─────────────────────────────────────────────────
-    console.log(`🔍 Checking user ${userId} with User Service...`);
+    console.log(`🔍 Checking user ${userId}...`);
     const userResponse = await getUserById(userId);
-
-    if (!userResponse.success) {
-      return res.status(404).json({
-        success: false,
-        message: `Cannot create order: ${userResponse.message}`
-      });
-    }
-
+    if (!userResponse.success) return res.status(404).json({ success: false, message: `Cannot create order: ${userResponse.message}` });
     const user = userResponse.data;
     console.log(`✅ User verified: ${user.name}`);
 
-    // ─────────────────────────────────────────────────
-    // Step 3: Call PRODUCT SERVICE to verify product
-    // ─────────────────────────────────────────────────
-    console.log(`🔍 Checking product ${productId} with Product Service...`);
+    console.log(`🔍 Checking product ${productId}...`);
     const productResponse = await getProductById(productId);
-
-    if (!productResponse.success) {
-      return res.status(404).json({
-        success: false,
-        message: `Cannot create order: ${productResponse.message}`
-      });
-    }
-
+    if (!productResponse.success) return res.status(404).json({ success: false, message: `Cannot create order: ${productResponse.message}` });
     const product = productResponse.data;
     console.log(`✅ Product verified: ${product.name}`);
 
-    // Check if enough stock is available
-    if (product.stock < quantity) {
-      return res.status(400).json({
-        success: false,
-        message: `Insufficient stock. Requested: ${quantity}, Available: ${product.stock}`
-      });
-    }
+    if (product.stock < quantity)
+      return res.status(400).json({ success: false, message: `Insufficient stock. Requested: ${quantity}, Available: ${product.stock}` });
 
-    // ─────────────────────────────────────────────────
-    // Step 4: Create the order
-    // ─────────────────────────────────────────────────
-    const totalPrice = product.price * quantity;
+    const totalPrice = product.price * parseInt(quantity);
 
-    const newOrder = {
-      id: `order-${uuidv4().split('-')[0]}`,
+    const newOrder = await Order.create({
       userId,
       userName: user.name,
       userEmail: user.email,
@@ -108,26 +58,17 @@ const createOrder = async (req, res) => {
       quantity: parseInt(quantity),
       unitPrice: product.price,
       totalPrice,
-      status: 'confirmed',
-      createdAt: new Date().toISOString()
-    };
+      status: 'confirmed'
+    });
+    console.log(`✅ Order created: ${newOrder._id}`);
 
-    orders.push(newOrder);
-    console.log(`✅ Order created: ${newOrder.id}`);
-
-    // ─────────────────────────────────────────────────
-    // Step 5: Reduce stock in Product Service
-    // ─────────────────────────────────────────────────
-    console.log(`📦 Updating stock in Product Service...`);
+    console.log(`📦 Updating stock...`);
     await reduceStock(productId, parseInt(quantity));
     console.log(`✅ Stock updated`);
 
-    // ─────────────────────────────────────────────────
-    // Step 6: Call NOTIFICATION SERVICE
-    // ─────────────────────────────────────────────────
-    console.log(`📧 Sending notification via Notification Service...`);
+    console.log(`📧 Sending notification...`);
     const notificationResult = await sendOrderNotification({
-      orderId: newOrder.id,
+      orderId: newOrder._id,
       userName: user.name,
       userEmail: user.email,
       productName: product.name,
@@ -136,22 +77,15 @@ const createOrder = async (req, res) => {
     });
     console.log(`✅ Notification sent`);
 
-    // ─────────────────────────────────────────────────
-    // Step 7: Return success response
-    // ─────────────────────────────────────────────────
     res.status(201).json({
       success: true,
       message: 'Order created successfully',
       data: newOrder,
       notification: notificationResult
     });
-
   } catch (error) {
     console.error(`❌ Order creation failed: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      message: `Order creation failed: ${error.message}`
-    });
+    res.status(500).json({ success: false, message: `Order creation failed: ${error.message}` });
   }
 };
 

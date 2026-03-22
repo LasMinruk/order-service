@@ -1,7 +1,9 @@
 const express = require('express');
+const helmet = require('helmet');
 const app = express();
 
 // Middleware
+app.use(helmet()); 
 app.use(express.json());
 
 // Import routes
