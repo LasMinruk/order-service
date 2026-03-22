@@ -28,26 +28,34 @@ const createOrder = async (req, res) => {
 
   if (!userId || !productId || !quantity)
     return res.status(400).json({ success: false, message: 'Please provide userId, productId, and quantity' });
-  if (isNaN(quantity) || quantity <= 0)
+
+  // Fix 1: Number.isNaN instead of isNaN
+  if (Number.isNaN(Number(quantity)) || quantity <= 0)
     return res.status(400).json({ success: false, message: 'Quantity must be a positive number' });
 
   try {
-    console.log(`🔍 Checking user ${userId}...`);
+    // Fix 2: Remove console.log with user-controlled userId
+    console.log('🔍 Checking user with User Service...');
     const userResponse = await getUserById(userId);
     if (!userResponse.success) return res.status(404).json({ success: false, message: `Cannot create order: ${userResponse.message}` });
     const user = userResponse.data;
-    console.log(`✅ User verified: ${user.name}`);
+    // Fix 3: Remove console.log with user-controlled user.name
+    console.log('✅ User verified successfully');
 
-    console.log(`🔍 Checking product ${productId}...`);
+    // Fix 4: Remove console.log with user-controlled productId
+    console.log('🔍 Checking product with Product Service...');
     const productResponse = await getProductById(productId);
     if (!productResponse.success) return res.status(404).json({ success: false, message: `Cannot create order: ${productResponse.message}` });
     const product = productResponse.data;
-    console.log(`✅ Product verified: ${product.name}`);
+    // Fix 5: Remove console.log with user-controlled product.name
+    console.log('✅ Product verified successfully');
 
     if (product.stock < quantity)
       return res.status(400).json({ success: false, message: `Insufficient stock. Requested: ${quantity}, Available: ${product.stock}` });
 
-    const totalPrice = product.price * parseInt(quantity);
+    // Fix 6 & 7: Number.parseInt instead of parseInt
+    const qty = Number.parseInt(quantity, 10);
+    const totalPrice = product.price * qty;
 
     const newOrder = await Order.create({
       userId,
@@ -55,18 +63,18 @@ const createOrder = async (req, res) => {
       userEmail: user.email,
       productId,
       productName: product.name,
-      quantity: parseInt(quantity),
+      quantity: qty,
       unitPrice: product.price,
       totalPrice,
       status: 'confirmed'
     });
     console.log(`✅ Order created: ${newOrder._id}`);
 
-    console.log(`📦 Updating stock...`);
-    await reduceStock(productId, parseInt(quantity));
-    console.log(`✅ Stock updated`);
+    console.log('📦 Updating stock...');
+    await reduceStock(productId, qty);
+    console.log('✅ Stock updated');
 
-    console.log(`📧 Sending notification...`);
+    console.log('📧 Sending notification...');
     const notificationResult = await sendOrderNotification({
       orderId: newOrder._id,
       userName: user.name,
@@ -75,7 +83,7 @@ const createOrder = async (req, res) => {
       quantity: newOrder.quantity,
       totalPrice: newOrder.totalPrice
     });
-    console.log(`✅ Notification sent`);
+    console.log('✅ Notification sent');
 
     res.status(201).json({
       success: true,
@@ -84,7 +92,7 @@ const createOrder = async (req, res) => {
       notification: notificationResult
     });
   } catch (error) {
-    console.error(`❌ Order creation failed: ${error.message}`);
+    console.error('❌ Order creation failed');
     res.status(500).json({ success: false, message: `Order creation failed: ${error.message}` });
   }
 };
